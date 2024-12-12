@@ -1,1 +1,1 @@
-Download the zip file, change the path, and do some downloading. 
+Use the scraperDownloaderCombined.py perhaps
