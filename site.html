@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Expandable Filing Table</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .hidden-input {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
+        <div class="mb-4">
+            <input 
+                type="file" 
+                id="jsonFileInput" 
+                accept=".json" 
+                class="hidden-input"
+            >
+            <button 
+                id="uploadButton"
+                class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
+            >
+                Upload JSON File
+            </button>
+        </div>
+
+        <div id="dataContainer" class="space-y-4">
+            <p class="text-center text-gray-500">No data uploaded. Please upload a JSON file.</p>
+        </div>
+    </div>
+
+    <script>
+        // Utility functions
+        function parseDate(dateString) {
+            const [month, day, year] = dateString.split('/').map(Number);
+            return new Date(year, month - 1, day);
+        }
+
+        // Main application logic
+        class FilingTableApp {
+            constructor() {
+                this.jsonData = [];
+                this.sortConfig = { key: null, direction: 'ascending' };
+                this.initEventListeners();
+            }
+
+            initEventListeners() {
+                const uploadButton = document.getElementById('uploadButton');
+                const fileInput = document.getElementById('jsonFileInput');
+
+                uploadButton.addEventListener('click', () => fileInput.click());
+                fileInput.addEventListener('change', (e) => this.handleFileUpload(e));
+            }
+
+            handleFileUpload(event) {
+                const file = event.target.files[0];
+                const reader = new FileReader();
+
+                reader.onload = (e) => {
+                    try {
+                        this.jsonData = JSON.parse(e.target.result);
+                        this.renderData();
+                    } catch (error) {
+                        alert('Invalid JSON file');
+                    }
+                };
+
+                reader.readAsText(file);
+            }
+
+            groupFilings() {
+                const groups = {};
+
+                this.jsonData.forEach(filing => {
+                    const filerKey = `${filing.Prefix} ${filing.First} ${filing.Last}`;
+                    
+                    if (!groups[filerKey]) {
+                        groups[filerKey] = {
+                            filerName: filerKey,
+                            filings: []
+                        };
+                    }
+                    groups[filerKey].filings.push(filing);
+                });
+
+                return Object.values(groups).map(group => {
+                    // Sort filings within the group based on current sort configuration
+                    group.filings.sort((a, b) => {
+                        if (this.sortConfig.key === 'FilingDate') {
+                            const dateA = parseDate(a.FilingDate);
+                            const dateB = parseDate(b.FilingDate);
+                            return this.sortConfig.direction === 'ascending' 
+                                ? dateA - dateB 
+                                : dateB - dateA;
+                        }
+                        
+                        if (this.sortConfig.key === 'First') {
+                            return this.sortConfig.direction === 'ascending'
+                                ? a.First.localeCompare(b.First)
+                                : b.First.localeCompare(a.First);
+                        }
+                        
+                        return 0;
+                    });
+
+                    return group;
+                });
+            }
+
+            renderData() {
+                const container = document.getElementById('dataContainer');
+                container.innerHTML = '';
+
+                const groupedFilings = this.groupFilings();
+
+                if (groupedFilings.length === 0) {
+                    container.innerHTML = '<p class="text-center text-gray-500">No data uploaded. Please upload a JSON file.</p>';
+                    return;
+                }
+
+                groupedFilings.forEach(group => {
+                    const groupElement = document.createElement('div');
+                    groupElement.className = 'bg-white border rounded-lg overflow-hidden';
+
+                    // Filer header
+                    const headerElement = document.createElement('div');
+                    headerElement.className = 'p-4 bg-gray-100 cursor-pointer hover:bg-gray-200 flex justify-between items-center';
+                    headerElement.innerHTML = `
+                        <span class="font-semibold">${group.filerName}</span>
+                        <span class="toggle-icon">▼</span>
+                    `;
+
+                    // Details table
+                    const detailsElement = document.createElement('div');
+                    detailsElement.className = 'hidden p-4';
+                    detailsElement.innerHTML = this.createFilingsTable(group.filings);
+
+                    // Toggle functionality
+                    headerElement.addEventListener('click', () => {
+                        detailsElement.classList.toggle('hidden');
+                        const toggleIcon = headerElement.querySelector('.toggle-icon');
+                        toggleIcon.textContent = detailsElement.classList.contains('hidden') ? '▼' : '▲';
+                    });
+
+                    groupElement.appendChild(headerElement);
+                    groupElement.appendChild(detailsElement);
+                    container.appendChild(groupElement);
+                });
+            }
+
+            createFilingsTable(filings) {
+                return `
+                    <table class="w-full">
+                        <thead>
+                            <tr class="bg-gray-200">
+                                <th class="p-2 text-left cursor-pointer sort-header" data-key="FilingDate">
+                                    Filing Date ${this.getSortIndicator('FilingDate')}
+                                </th>
+                                <th class="p-2 text-left cursor-pointer sort-header" data-key="First">
+                                    First Name ${this.getSortIndicator('First')}
+                                </th>
+                                <th class="p-2 text-left">Filing Type</th>
+                                <th class="p-2 text-left">State District</th>
+                                <th class="p-2 text-left">Year</th>
+                                <th class="p-2 text-left">Doc ID</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filings.map(filing => `
+                                <tr class="border-t hover:bg-gray-100">
+                                    <td class="p-2">${filing.FilingDate}</td>
+                                    <td class="p-2">${filing.First}</td>
+                                    <td class="p-2">${filing.FilingType}</td>
+                                    <td class="p-2">${filing.StateDst}</td>
+                                    <td class="p-2">${filing.Year}</td>
+                                    <td class="p-2">${filing.DocID}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            }
+
+            getSortIndicator(key) {
+                if (this.sortConfig.key !== key) return '';
+                return this.sortConfig.direction === 'ascending' ? '▲' : '▼';
+            }
+
+            setupSortingListeners() {
+                document.addEventListener('click', (e) => {
+                    const sortHeader = e.target.closest('.sort-header');
+                    if (sortHeader) {
+                        const key = sortHeader.dataset.key;
+                        this.toggleSort(key);
+                        this.renderData();
+                    }
+                });
+            }
+
+            toggleSort(key) {
+                if (this.sortConfig.key === key) {
+                    // Toggle direction if same key
+                    this.sortConfig.direction = 
+                        this.sortConfig.direction === 'ascending' ? 'descending' : 'ascending';
+                } else {
+                    // New key, start with ascending
+                    this.sortConfig = { key, direction: 'ascending' };
+                }
+            }
+        }
+
+        // Initialize the application
+        const app = new FilingTableApp();
+        app.setupSortingListeners();
+    </script>
+</body>
+</html>
